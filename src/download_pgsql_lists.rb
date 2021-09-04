@@ -1,14 +1,23 @@
+# frozen_string_literal: true
+
+require 'bundler/inline'
+
+gemfile do
+  source 'https://rubygems.org'
+  gem 'nokogiri'
+end
+
 require 'nokogiri'
 require 'open-uri'
 require 'fileutils'
 require 'yaml'
 require 'date'
 
-DATA_DIR = (ENV['DATA_DIR'] || '~/data/import').freeze
-BASE_URL = 'https://www.postgresql.org'.freeze
-ALL_LISTS_URL = "#{BASE_URL}/list/".freeze
-MBOX_USERNAME = 'archives'.freeze
-MBOX_PASSWORD = 'antispam'.freeze
+DATA_DIR = (ENV['DATA_DIR'] || '~/data/import')
+BASE_URL = 'https://www.postgresql.org'
+ALL_LISTS_URL = "#{BASE_URL}/list/"
+MBOX_USERNAME = 'archives'
+MBOX_PASSWORD = 'antispam'
 
 class PostgresqlMailingList
   ListMetadata = Struct.new(:name, :description, :link, :category_name, :files)
@@ -30,7 +39,7 @@ class PostgresqlMailingList
     all_lists = []
     page = Nokogiri::HTML(open_url(ALL_LISTS_URL))
 
-    page.css('#pgContentWrap h2').each do |list_header_element|
+    page.css('#pgContentWrap h5').each do |list_header_element|
       list_row_elements(list_header_element).each do |list_row_element|
         metadata = create_list_metadata(list_header_element, list_row_element)
         all_lists << metadata if metadata
@@ -41,20 +50,19 @@ class PostgresqlMailingList
   end
 
   def list_row_elements(list_header_element)
-    list_header_element.at_css('+ div.tblBasic').css('tr')
+    list_header_element.at_css('+ table tbody').css('tr')
   end
 
   def create_list_metadata(list_header_element, list_row_element)
-    link_element = list_row_element.at_css('td.colFirst a[href^="/list/"]')
-    description_element = list_row_element.at_css('td.colLast')
+    link_element = list_row_element.at_css('th a[href^="/list/"]')
+    description_element = list_row_element.at_css('td')
+    return if !link_element || !description_element || !list_header_element
 
-    if link_element && description_element && list_header_element
-      list_name = link_element.text
-      list_description = description_element.inner_html
+    list_name = link_element.text
+    list_description = description_element.inner_html
 
-      ListMetadata.new(list_name, list_description, link_element['href'],
-                       list_header_element.text, mbox_file_hashes(list_name))
-    end
+    ListMetadata.new(list_name, list_description, link_element['href'],
+                     list_header_element.text, mbox_file_hashes(list_name))
   end
 
   def metadata_filename(list_name)
@@ -70,10 +78,10 @@ class PostgresqlMailingList
     current_month = Date.today.strftime('%Y%m')
     month_of_previous_week = (Date.today - 7).strftime('%Y%m')
 
-    unless filename.end_with?(current_month, month_of_previous_week)
-      metadata.files[File.basename(filename)] = calc_checksum(filename)
-      write_metadata(metadata)
-    end
+    return unless filename.end_with?(current_month, month_of_previous_week)
+
+    metadata.files[File.basename(filename)] = calc_checksum(filename)
+    write_metadata(metadata)
   end
 
   def find_mbox_links(metadata)
@@ -172,7 +180,7 @@ class PostgresqlMailingList
 
   def open_url(url)
     tries ||= 3
-    open(url)
+    URI.open(url)
   rescue Net::OpenTimeout
     retry unless (tries -= 1).zero?
   end
